@@ -3,6 +3,8 @@ import logging
 import sys
 from os import getenv
 
+import time
+
 from aiogram import Bot, Dispatcher, types
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -24,6 +26,7 @@ color = ["🔵", "🔴"]
 game_instance = {}
 player_id = {}
 player_name = {}
+last_move_time = {}
 
 
 class SelectionCallback(CallbackData, prefix="selection"):
@@ -79,6 +82,7 @@ async def command_game_handler(message: Message):
     game_id = await get_game_id(answer_message)
     player_id[game_id] = [None, None]
     player_name[game_id] = [None, None]
+    last_move_time[game_id] = time.time()
 
 
 @dp.callback_query(SelectionCallback.filter())
@@ -112,6 +116,10 @@ async def callbacks_move(
     if callback.from_user.id != player_id[game_id][game_instance[game_id].currentPlayer]:
         await callback.answer("Сейчас не ваш ход")
         return
+    now = time.time()
+    if now - last_move_time[game_id] < 1:
+        await callback.answer("Ходите не так быстро")
+        return
     x = callback_data.x
     y = callback_data.y
     if x == -1:
@@ -133,6 +141,7 @@ async def callbacks_move(
         await callback.message.delete()
         return
     await callback.message.edit_text(await get_game_text(game_id), reply_markup=await get_move_keyboard(game_id))
+    last_move_time[game_id] = time.time()
 
 
 async def main():
