@@ -44,7 +44,7 @@ async def command_start_handler(message: Message):
 
 
 async def get_game_id(message: Message):
-    return 1000000 * message.chat.id + message.message_id
+    return message.chat.id
 
 
 async def get_selection_keyboard(game_id: Optional[int] = None):
@@ -70,7 +70,7 @@ async def get_move_keyboard(game_id: int):
 
 async def get_game_text(game_id: int):
     return (
-        f"<i>Партия {game_id}</i>\n{player_name[game_id][0]} против {player_name[game_id][1]}\n"
+        f"{player_name[game_id][0]} против {player_name[game_id][1]}\n"
         f"<b>Ходит:</b> {player_name[game_id][game_instance[game_id].currentPlayer]}\n"
         f"<b>Осталось ходов:</b> {game_instance[game_id].movesLeft}"
     )
@@ -78,8 +78,12 @@ async def get_game_text(game_id: int):
 
 @dp.message(Command("game"))
 async def command_game_handler(message: Message):
-    answer_message = await message.answer("<i>Ожидаем игроков</i>", reply_markup=await get_selection_keyboard())
-    game_id = await get_game_id(answer_message)
+    game_id = await get_game_id(message)
+    if game_id in game_instance:
+        await message.answer("В этом чате уже есть активня партия!")
+        return
+    await message.answer("<i>Ожидаем игроков</i>", reply_markup=await get_selection_keyboard())
+    game_instance[game_id] = game.Instance()
     player_id[game_id] = [None, None]
     player_name[game_id] = [None, None]
     last_move_time[game_id] = time.time()
@@ -100,11 +104,23 @@ async def callbacks_selection(
             for i in [3, 2, 1]:
                 await callback.message.edit_text(f"<b>Начало через:</b> {i}")
                 await asyncio.sleep(1)
-            game_instance[game_id] = game.Instance()
             await game_instance[game_id].setup()
             await callback.message.edit_text(await get_game_text(game_id), reply_markup=await get_move_keyboard(game_id))
     else:
         await callback.answer("Место занято")
+
+
+async def end_game(callback, game_id: int, text: str = ""):
+    await callback.message.answer(
+        text=f"{player_name[game_id][0]} против {player_name[game_id][1]}\n"
+             f"<b>Победил</b> {player_name[game_id][(game_instance[game_id].currentPlayer + 1) % 2]} "
+             + text
+    )
+    await callback.message.delete()
+    del game_instance[game_id]
+    del player_id[game_id]
+    del player_name[game_id]
+    del last_move_time[game_id]
 
 
 @dp.callback_query(MoveCallback.filter())
@@ -123,22 +139,13 @@ async def callbacks_move(
     x = callback_data.x
     y = callback_data.y
     if x == -1:
-        await callback.message.answer(
-            text=f"<i>Партия {game_id}</i>\n{player_name[game_id][0]} против {player_name[game_id][1]}\n"
-                 f"<b>Победил</b> {player_name[game_id][(game_instance[game_id].currentPlayer + 1) % 2]} "
-                 f"<i>(Сдача партии)</i>"
-        )
-        await callback.message.delete()
+        await end_game(callback, game_id, "(Сдача партии)")
         return
     if not await game_instance[game_id].move(x, y):
         await callback.answer("Ход не корректный")
         return
     if await game_instance[game_id].is_over():
-        await callback.message.answer(
-            text=f"<i>Партия {game_id}</i>\n{player_name[game_id][0]} против {player_name[game_id][1]}\n"
-                 f"<b>Победил</b> {player_name[game_id][(game_instance[game_id].currentPlayer + 1) % 2]}"
-        )
-        await callback.message.delete()
+        await end_game(callback, game_id)
         return
     await callback.message.edit_text(await get_game_text(game_id), reply_markup=await get_move_keyboard(game_id))
     last_move_time[game_id] = time.time()
