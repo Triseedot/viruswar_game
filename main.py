@@ -40,7 +40,7 @@ class MoveCallback(CallbackData, prefix="move"):
 
 @dp.message(CommandStart())
 async def command_start_handler(message: Message):
-    await message.answer(f"/game для начала игры")
+    await message.answer(f"/game для начала игры\n/help для правил")
 
 
 async def get_game_id(message: Message):
@@ -73,6 +73,20 @@ async def get_game_text(game_id: int):
         f"{player_name[game_id][0]} против {player_name[game_id][1]}\n"
         f"<b>Ходит:</b> {player_name[game_id][game_instance[game_id].currentPlayer]}\n"
         f"<b>Осталось ходов:</b> {game_instance[game_id].movesLeft}"
+    )
+
+
+@dp.message(Command("help"))
+async def command_game_handler(message: Message):
+    await message.answer(
+        """На квадратном поле 8 на 10 играют двое, представляя из себя враждующие 
+        "вирусы". Изначально у каждого по одной клетке, которые находятся в разных углах и имеют состояние "живых". 
+        Ходят по очереди, причем по 3 действия сразу, во время которых можно либо создать новую "живую клетку", 
+        но чтобы она была соседней с какой-то клеткой, что уже как-то последовательно соединена с уже существующей 
+        "живой", либо съесть "живую" клетку соперника соседней своей к ней, но та тоже должна быть последовательно 
+        соединена с "живой", делая при этом обретенную клетку собственной "мертвой". "Мертвые" клетки уже не подлежат 
+        пересъедению, они лишь служат "тропой", притом новых "живых" самостоятельно не могут образовывать. Соседними 
+        называются клетки, которые имеют общую сторону. Проигрывает тот, кто не может сделать ход."""
     )
 
 
