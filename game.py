@@ -35,9 +35,9 @@ class Instance:
             return " "
         elif self.field[x][y].player == 0:
             if self.field[x][y].isAlive:
-                return "🔵"
+                return "🟢"
             else:
-                return "🟦"
+                return "🟩"
         else:
             if self.field[x][y].isAlive:
                 return "🔴"

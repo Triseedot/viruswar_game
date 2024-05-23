@@ -21,7 +21,7 @@ TOKEN = getenv("BOT_TOKEN")
 
 dp = Dispatcher()
 
-color = ["🔵", "🔴"]
+color = ["🟢", "🔴"]
 
 game_instance = {}
 player_id = {}
