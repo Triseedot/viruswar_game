@@ -57,6 +57,7 @@ async def get_selection_keyboard(game_id: Optional[int] = None):
         else:
             player_selection.button(text="Свободно", callback_data=SelectionCallback(player=i))
     player_selection.button(text="Отменить игру", callback_data=SelectionCallback(player=-2))
+    player_selection.adjust(2, 1)
     return player_selection.as_markup()
 
 
