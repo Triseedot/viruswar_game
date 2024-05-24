@@ -51,11 +51,12 @@ async def get_selection_keyboard(game_id: Optional[int] = None):
     player_selection = InlineKeyboardBuilder()
     for i in range(2):
         if game_id is None:
-            player_selection.button(text=f"Свободно", callback_data=SelectionCallback(player=i))
+            player_selection.button(text="Свободно", callback_data=SelectionCallback(player=i))
         elif player_id[game_id][i]:
             player_selection.button(text=player_name[game_id][i], callback_data=SelectionCallback(player=-1))
         else:
-            player_selection.button(text=f"Свободно", callback_data=SelectionCallback(player=i))
+            player_selection.button(text="Свободно", callback_data=SelectionCallback(player=i))
+    player_selection.button(text="Отменить игру", callback_data=SelectionCallback(player=-2))
     return player_selection.as_markup()
 
 
@@ -77,7 +78,7 @@ async def get_game_text(game_id: int):
 
 
 @dp.message(Command("help"))
-async def command_game_handler(message: Message):
+async def command_help_handler(message: Message):
     await message.answer(
         'На поле 8 на 10 играют двое, представляя из себя враждующие "вирусы". Изначально у каждого по '
         'одной клетке, которые находятся в разных углах и имеют состояние "живых". Ходят по очереди, причем по 3 '
@@ -109,6 +110,12 @@ async def callbacks_selection(
         callback_data: SelectionCallback
 ):
     game_id = await get_game_id(callback.message)
+    if callback_data.player == -2:
+        await callback.message.delete()
+        del game_instance[game_id]
+        del player_id[game_id]
+        del player_name[game_id]
+        del last_move_time[game_id]
     if callback_data.player != -1:
         player_id[game_id][callback_data.player] = callback.from_user.id
         player_name[game_id][callback_data.player] = f"{color[callback_data.player]} {callback.from_user.first_name}"
