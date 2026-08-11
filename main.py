@@ -17,7 +17,7 @@ from typing import Optional
 
 import game
 
-TOKEN = getenv("BOT_TOKEN")
+TOKEN = "6013568085:AAEPUrDyYtrpXh9YOpmgakm9ZbGiaBrbinU"
 
 dp = Dispatcher()
 
@@ -44,7 +44,9 @@ async def command_start_handler(message: Message):
 
 
 async def get_game_id(message: Message):
-    return message.chat.id
+    print(message.text)
+    print(message.message_id)
+    return message.message_id
 
 
 async def get_selection_keyboard(game_id: Optional[int] = None):
@@ -94,11 +96,8 @@ async def command_help_handler(message: Message):
 
 @dp.message(Command("game"))
 async def command_game_handler(message: Message):
-    game_id = await get_game_id(message)
-    if game_id in game_instance:
-        await message.answer("В этом чате уже есть активня партия!")
-        return
-    await message.answer("<i>Ожидаем игроков</i>", reply_markup=await get_selection_keyboard())
+    answer_message = await message.answer("<i>Ожидаем игроков</i>", reply_markup=await get_selection_keyboard())
+    game_id = await get_game_id(answer_message)
     game_instance[game_id] = game.Instance()
     player_id[game_id] = [None, None]
     player_name[game_id] = [None, None]
@@ -133,12 +132,12 @@ async def callbacks_selection(
 
 
 async def end_game(callback, game_id: int, text: str = ""):
-    await callback.message.answer(
-        text=f"{player_name[game_id][0]} против {player_name[game_id][1]}\n"
+    await callback.message.edit_text(
+             f"{player_name[game_id][0]} против {player_name[game_id][1]}\n"
              f"<b>Победил</b> {player_name[game_id][(game_instance[game_id].currentPlayer + 1) % 2]} "
              + text
     )
-    await callback.message.delete()
+    await callback.message.delete_reply_markup()
     del game_instance[game_id]
     del player_id[game_id]
     del player_name[game_id]
