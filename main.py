@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import sys
-from os import getenv
-
+import os
+from dotenv import load_dotenv
+from copy import deepcopy
 import time
 
 from aiogram import Bot, Dispatcher, types
@@ -17,16 +18,19 @@ from typing import Optional
 
 import game
 
-TOKEN = "6013568085:AAEPUrDyYtrpXh9YOpmgakm9ZbGiaBrbinU"
+load_dotenv()
+TOKEN = os.environ["BOT_TOKEN"]
 
 dp = Dispatcher()
 
 color = ["🟢", "🔴"]
 
-game_instance = {}
-player_id = {}
-player_name = {}
-last_move_time = {}
+game_instance: dict[int, game.Instance] = {}
+player_id: dict[int, list[Optional[int]]] = {}
+player_name: dict[int, list[Optional[str]]] = {}
+last_move_time: dict[int, float] = {}
+history: dict[int, list[game.Instance]] = {}
+history_time: dict[int, int] = {}
 
 
 class SelectionCallback(CallbackData, prefix="selection"):
@@ -38,9 +42,14 @@ class MoveCallback(CallbackData, prefix="move"):
     y: int
 
 
+class HistoryCallback(CallbackData, prefix="history"):
+    x: int
+    y: int
+
+
 @dp.message(CommandStart())
 async def command_start_handler(message: Message):
-    await message.answer(f"/game для начала игры\n/help для правил")
+    await message.answer("/game для начала игры\n/help для правил")
 
 
 async def get_game_id(message: Message):
@@ -53,12 +62,22 @@ async def get_selection_keyboard(game_id: Optional[int] = None):
     player_selection = InlineKeyboardBuilder()
     for i in range(2):
         if game_id is None:
-            player_selection.button(text="Свободно", callback_data=SelectionCallback(player=i))
+            player_selection.button(
+                text="Свободно", callback_data=SelectionCallback(player=i)
+            )
         elif player_id[game_id][i]:
-            player_selection.button(text=player_name[game_id][i], callback_data=SelectionCallback(player=-1))
+            current_name = player_name[game_id][i]
+            assert current_name is not None
+            player_selection.button(
+                text=current_name, callback_data=SelectionCallback(player=-1)
+            )
         else:
-            player_selection.button(text="Свободно", callback_data=SelectionCallback(player=i))
-    player_selection.button(text="Отменить игру", callback_data=SelectionCallback(player=-2))
+            player_selection.button(
+                text="Свободно", callback_data=SelectionCallback(player=i)
+            )
+    player_selection.button(
+        text="Отменить игру", callback_data=SelectionCallback(player=-2)
+    )
     player_selection.adjust(2, 1)
     return player_selection.as_markup()
 
@@ -67,8 +86,26 @@ async def get_move_keyboard(game_id: int):
     field = InlineKeyboardBuilder()
     for x in range(game.height):
         for y in range(game.width):
-            field.button(text=await game_instance[game_id].get(x, y), callback_data=MoveCallback(x=x, y=y))
+            field.button(
+                text=game_instance[game_id].get(x, y),
+                callback_data=MoveCallback(x=x, y=y),
+            )
     field.button(text="Сдаться", callback_data=MoveCallback(x=-1, y=-1))
+    return field.as_markup()
+
+
+async def get_history_keyboard(game_id: int):
+    field = InlineKeyboardBuilder()
+    for x in range(game.height):
+        for y in range(game.width):
+            field.button(
+                text=history[game_id][history_time[game_id]].get(x, y),
+                callback_data=HistoryCallback(x=x, y=y),
+            )
+        print()
+    field.button(text="Назад", callback_data=HistoryCallback(x=-1, y=-1))
+    field.button(text="Вперед", callback_data=HistoryCallback(x=-2, y=-2))
+    print(field.as_markup())
     return field.as_markup()
 
 
@@ -90,13 +127,15 @@ async def command_help_handler(message: Message):
         'клетку соперника соседней своей к ней, но та тоже должна быть последовательно соединена с "живой", '
         'делая при этом обретенную клетку собственной "мертвой". "Мертвые" клетки уже не подлежат пересъедению, '
         'они лишь служат "тропой", притом новых "живых" самостоятельно не могут образовывать. Соседними называются '
-        'клетки, которые имеют общую сторону. Проигрывает тот, кто не может сделать ход.'
+        "клетки, которые имеют общую сторону. Проигрывает тот, кто не может сделать ход."
     )
 
 
 @dp.message(Command("game"))
 async def command_game_handler(message: Message):
-    answer_message = await message.answer("<i>Ожидаем игроков</i>", reply_markup=await get_selection_keyboard())
+    answer_message = await message.answer(
+        "<i>Ожидаем игроков</i>", reply_markup=await get_selection_keyboard()
+    )
     game_id = await get_game_id(answer_message)
     game_instance[game_id] = game.Instance()
     player_id[game_id] = [None, None]
@@ -106,9 +145,10 @@ async def command_game_handler(message: Message):
 
 @dp.callback_query(SelectionCallback.filter())
 async def callbacks_selection(
-        callback: types.CallbackQuery,
-        callback_data: SelectionCallback
+    callback: types.CallbackQuery, callback_data: SelectionCallback
 ):
+    if not isinstance(callback.message, Message):
+        return
     game_id = await get_game_id(callback.message)
     if callback_data.player == -2:
         await callback.message.delete()
@@ -118,26 +158,36 @@ async def callbacks_selection(
         del last_move_time[game_id]
     if callback_data.player != -1:
         player_id[game_id][callback_data.player] = callback.from_user.id
-        player_name[game_id][callback_data.player] = f"{color[callback_data.player]} {callback.from_user.first_name}"
+        player_name[game_id][callback_data.player] = (
+            f"{color[callback_data.player]} {callback.from_user.first_name}"
+        )
         await callback.answer()
-        await callback.message.edit_reply_markup(reply_markup=await get_selection_keyboard(game_id))
+        await callback.message.edit_reply_markup(
+            reply_markup=await get_selection_keyboard(game_id)
+        )
         if player_id[game_id][0] and player_id[game_id][1]:
             for i in [3, 2, 1]:
                 await callback.message.edit_text(f"<b>Начало через:</b> {i}")
                 await asyncio.sleep(1)
-            await game_instance[game_id].setup()
-            await callback.message.edit_text(await get_game_text(game_id), reply_markup=await get_move_keyboard(game_id))
+            history[game_id] = [deepcopy(game_instance[game_id])]
+            await callback.message.edit_text(
+                await get_game_text(game_id),
+                reply_markup=await get_move_keyboard(game_id),
+            )
     else:
         await callback.answer("Место занято")
 
 
 async def end_game(callback, game_id: int, text: str = ""):
     await callback.message.edit_text(
-             f"{player_name[game_id][0]} против {player_name[game_id][1]}\n"
-             f"<b>Победил</b> {player_name[game_id][(game_instance[game_id].currentPlayer + 1) % 2]} "
-             + text
+        f"{player_name[game_id][0]} против {player_name[game_id][1]}\n"
+        f"<b>Победил</b> {player_name[game_id][(game_instance[game_id].currentPlayer + 1) % 2]} "
+        + text
     )
-    await callback.message.delete_reply_markup()
+    history_time[game_id] = len(history[game_id]) - 1
+    await callback.message.edit_reply_markup(
+        reply_markup=await get_history_keyboard(game_id)
+    )
     del game_instance[game_id]
     del player_id[game_id]
     del player_name[game_id]
@@ -145,31 +195,55 @@ async def end_game(callback, game_id: int, text: str = ""):
 
 
 @dp.callback_query(MoveCallback.filter())
-async def callbacks_move(
-        callback: types.CallbackQuery,
-        callback_data: MoveCallback
-):
+async def callbacks_move(callback: types.CallbackQuery, callback_data: MoveCallback):
+    if not isinstance(callback.message, Message):
+        return
     game_id = await get_game_id(callback.message)
-    if callback.from_user.id != player_id[game_id][game_instance[game_id].currentPlayer]:
+    if (
+        callback.from_user.id
+        != player_id[game_id][game_instance[game_id].currentPlayer]
+    ):
         await callback.answer("Сейчас не ваш ход")
         return
     now = time.time()
-    if now - last_move_time[game_id] < 1:
+    if now - last_move_time[game_id] < 0.2:
         await callback.answer("Ходите не так быстро")
         return
     x = callback_data.x
     y = callback_data.y
     if x == -1:
         await end_game(callback, game_id, "(Сдача партии)")
+
         return
-    if not await game_instance[game_id].move(x, y):
+    if not game_instance[game_id].move(x, y):
         await callback.answer("Ход не корректный")
         return
-    if await game_instance[game_id].is_over():
+    if game_instance[game_id].is_over():
         await end_game(callback, game_id)
         return
-    await callback.message.edit_text(await get_game_text(game_id), reply_markup=await get_move_keyboard(game_id))
+    await callback.message.edit_text(
+        await get_game_text(game_id), reply_markup=await get_move_keyboard(game_id)
+    )
     last_move_time[game_id] = time.time()
+    history[game_id].append(deepcopy(game_instance[game_id]))
+
+
+@dp.callback_query(HistoryCallback.filter())
+async def callbacks_history(
+    callback: types.CallbackQuery, callback_data: HistoryCallback
+):
+    if not isinstance(callback.message, Message):
+        return
+    game_id = await get_game_id(callback.message)
+    x = callback_data.x
+    if x == -1:
+        history_time[game_id] = max(history_time[game_id] - 1, 0)
+    else:
+        history_time[game_id] = min(history_time[game_id] + 1, len(history[game_id]))
+    await callback.message.edit_reply_markup(
+        reply_markup=await get_history_keyboard(game_id)
+    )
+    await callback.answer()
 
 
 async def main():
