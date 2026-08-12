@@ -1,2 +1,6 @@
 aiogram
 python-dotenv
+jax
+flax
+mctx
+numpy
