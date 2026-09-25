@@ -1,27 +1,25 @@
 import asyncio
 import logging
-import sys
 import os
-from dotenv import load_dotenv
-from copy import deepcopy
+import sys
 import time
+from copy import deepcopy
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import Command, CommandStart
+from aiogram.filters.callback_data import CallbackData
 from aiogram.types import Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.filters.callback_data import CallbackData
-
-from typing import Optional
+from dotenv import load_dotenv
 
 import game
-from bot import VirusBot
+from ai_player import VirusBot
 
 bot = VirusBot(
-    "model.pkl",
-    simulations=128,
+    "models/viruswar_v1.2.pkl",
+    simulations=1024,
 )
 
 load_dotenv()
@@ -32,8 +30,8 @@ dp = Dispatcher()
 color = ["🟢", "🔴"]
 
 game_instance: dict[int, game.Instance] = {}
-player_id: dict[int, list[Optional[int]]] = {}
-player_name: dict[int, list[Optional[str]]] = {}
+player_id: dict[int, list[int | None]] = {}
+player_name: dict[int, list[str | None]] = {}
 last_move_time: dict[int, float] = {}
 history: dict[int, list[game.Instance]] = {}
 history_time: dict[int, int] = {}
@@ -64,7 +62,7 @@ async def get_game_id(message: Message):
     return message.message_id
 
 
-async def get_selection_keyboard(game_id: Optional[int] = None):
+async def get_selection_keyboard(game_id: int | None = None):
     player_selection = InlineKeyboardBuilder()
     for i in range(2):
         if game_id is None:
@@ -85,9 +83,9 @@ async def get_selection_keyboard(game_id: Optional[int] = None):
         text="Отменить игру", callback_data=SelectionCallback(player=-2)
     )
     player_selection.button(
-        text="Начать с ботом", callback_data=SelectionCallback(player=-3)
+        text="Заполнить свободные ботом", callback_data=SelectionCallback(player=-3)
     )
-    player_selection.adjust(2, 2)
+    player_selection.adjust(2, 1, 1)
     return player_selection.as_markup()
 
 
@@ -114,6 +112,9 @@ async def get_history_keyboard(game_id: int):
         print()
     field.button(text="Назад", callback_data=HistoryCallback(x=-1, y=-1))
     field.button(text="Вперед", callback_data=HistoryCallback(x=-2, y=-2))
+    field.button(text="Назад на 10", callback_data=HistoryCallback(x=-3, y=-3))
+    field.button(text="Вперед на 10", callback_data=HistoryCallback(x=-4, y=-4))
+    field.adjust(*([8] * 10 + [2] * 2))
     return field.as_markup()
 
 
@@ -129,16 +130,16 @@ async def ai_step(message: Message):
     game_id = await get_game_id(message)
     x, y = bot.get_move(game_instance[game_id])
     assert game_instance[game_id].move(x, y)
+    history[game_id].append(deepcopy(game_instance[game_id]))
     if game_instance[game_id].is_over():
         await end_game(message, game_id)
         return
-    await message.edit_text(
-        await get_game_text(game_id), reply_markup=await get_move_keyboard(game_id)
-    )
-    history[game_id].append(deepcopy(game_instance[game_id]))
-    await asyncio.sleep(0.5)
     if player_id[game_id][game_instance[game_id].currentPlayer] is None:
         await ai_step(message)
+    else:
+        await message.edit_text(
+            await get_game_text(game_id), reply_markup=await get_move_keyboard(game_id)
+        )
 
 
 @dp.message(Command("help"))
@@ -190,9 +191,6 @@ async def callbacks_selection(
             reply_markup=await get_selection_keyboard(game_id)
         )
         if player_id[game_id][0] and player_id[game_id][1]:
-            for i in [3, 2, 1]:
-                await callback.message.edit_text(f"<b>Начало через:</b> {i}")
-                await asyncio.sleep(1)
             history[game_id] = [deepcopy(game_instance[game_id])]
             await callback.message.edit_text(
                 await get_game_text(game_id),
@@ -257,13 +255,14 @@ async def callbacks_move(callback: types.CallbackQuery, callback_data: MoveCallb
     if game_instance[game_id].is_over():
         await end_game(callback.message, game_id)
         return
-    await callback.message.edit_text(
-        await get_game_text(game_id), reply_markup=await get_move_keyboard(game_id)
-    )
     last_move_time[game_id] = time.time()
     history[game_id].append(deepcopy(game_instance[game_id]))
     if player_id[game_id][game_instance[game_id].currentPlayer] is None:
         await ai_step(callback.message)
+    else:
+        await callback.message.edit_text(
+            await get_game_text(game_id), reply_markup=await get_move_keyboard(game_id)
+        )
 
 
 @dp.callback_query(HistoryCallback.filter())
@@ -276,8 +275,13 @@ async def callbacks_history(
     x = callback_data.x
     if x == -1:
         history_time[game_id] = max(history_time[game_id] - 1, 0)
-    else:
+    elif x == -2:
         history_time[game_id] = min(history_time[game_id] + 1, len(history[game_id]))
+    elif x == -3:
+        history_time[game_id] = max(history_time[game_id] - 10, 0)
+    elif x == -4:
+        history_time[game_id] = min(history_time[game_id] + 10, len(history[game_id]))
+
     await callback.message.edit_reply_markup(
         reply_markup=await get_history_keyboard(game_id)
     )

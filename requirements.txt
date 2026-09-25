@@ -1,6 +1,6 @@
-aiogram
-python-dotenv
-jax
-flax
-mctx
-numpy
+aiogram==3.30.0
+python-dotenv==1.2.2
+jax==0.11.0
+flax==0.12.8
+mctx==0.0.71
+numpy==2.5.2

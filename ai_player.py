@@ -1,14 +1,13 @@
 # bot.py
 
-from functools import partial
-from typing import NamedTuple
 import pickle
+from functools import partial
+from typing import NamedTuple, Protocol, cast
 
+import flax.linen as nn
 import jax
 import jax.numpy as jnp
-import flax.linen as nn
 import mctx
-
 
 # ============================================================
 # Model board: 8 rows × 10 columns
@@ -577,10 +576,13 @@ def encode_states(state):
 
 
 def predict(variables, state):
-    logits, value = net.apply(
-        variables,
-        encode_states(state),
-        train=False,
+    logits, value = cast(
+        tuple[jax.Array, jax.Array],
+        net.apply(
+            variables,
+            encode_states(state),
+            train=False,
+        ),
     )
 
     batch = state.player.shape[0]
@@ -621,6 +623,28 @@ def predict(variables, state):
 # ============================================================
 # mctx
 # ============================================================
+
+
+class _RootOutputConstructor(Protocol):
+    def __call__(
+        self, *, prior_logits: jax.Array, value: jax.Array, embedding: VirusState
+    ) -> mctx.RootFnOutput: ...
+
+
+class _RecurrentOutputConstructor(Protocol):
+    def __call__(
+        self,
+        *,
+        reward: jax.Array,
+        discount: jax.Array,
+        prior_logits: jax.Array,
+        value: jax.Array,
+    ) -> mctx.RecurrentFnOutput: ...
+
+
+# chex.dataclass generates keyword-only constructors not visible to the type checker.
+_root_output = cast(_RootOutputConstructor, mctx.RootFnOutput)
+_recurrent_output = cast(_RecurrentOutputConstructor, mctx.RecurrentFnOutput)
 
 
 def select_state(mask, a, b):
@@ -692,7 +716,7 @@ def recurrent_fn(
     )
 
     return (
-        mctx.RecurrentFnOutput(
+        _recurrent_output(
             reward=reward,
             discount=discount,
             prior_logits=logits,
@@ -752,7 +776,7 @@ class VirusBot:
                 state,
             )
 
-            root = mctx.RootFnOutput(
+            root = _root_output(
                 prior_logits=logits,
                 value=value,
                 embedding=state,
