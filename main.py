@@ -112,8 +112,8 @@ async def get_history_keyboard(game_id: int):
         print()
     field.button(text="Назад", callback_data=HistoryCallback(x=-1, y=-1))
     field.button(text="Вперед", callback_data=HistoryCallback(x=-2, y=-2))
-    field.button(text="Назад на 10", callback_data=HistoryCallback(x=-3, y=-3))
-    field.button(text="Вперед на 10", callback_data=HistoryCallback(x=-4, y=-4))
+    field.button(text="Назад на 15", callback_data=HistoryCallback(x=-3, y=-3))
+    field.button(text="Вперед на 15", callback_data=HistoryCallback(x=-4, y=-4))
     field.adjust(*([8] * 10 + [2] * 2))
     return field.as_markup()
 
@@ -278,9 +278,9 @@ async def callbacks_history(
     elif x == -2:
         history_time[game_id] = min(history_time[game_id] + 1, len(history[game_id]) - 1)
     elif x == -3:
-        history_time[game_id] = max(history_time[game_id] - 10, 0)
+        history_time[game_id] = max(history_time[game_id] - 15, 0)
     elif x == -4:
-        history_time[game_id] = min(history_time[game_id] + 10, len(history[game_id]) - 1)
+        history_time[game_id] = min(history_time[game_id] + 15, len(history[game_id]) - 1)
 
     await callback.message.edit_reply_markup(
         reply_markup=await get_history_keyboard(game_id)
