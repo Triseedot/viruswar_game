@@ -276,11 +276,11 @@ async def callbacks_history(
     if x == -1:
         history_time[game_id] = max(history_time[game_id] - 1, 0)
     elif x == -2:
-        history_time[game_id] = min(history_time[game_id] + 1, len(history[game_id]))
+        history_time[game_id] = min(history_time[game_id] + 1, len(history[game_id]) - 1)
     elif x == -3:
         history_time[game_id] = max(history_time[game_id] - 10, 0)
     elif x == -4:
-        history_time[game_id] = min(history_time[game_id] + 10, len(history[game_id]))
+        history_time[game_id] = min(history_time[game_id] + 10, len(history[game_id]) - 1)
 
     await callback.message.edit_reply_markup(
         reply_markup=await get_history_keyboard(game_id)
